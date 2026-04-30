@@ -8,12 +8,49 @@ jobs:
   run-agent:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+
     steps:
       - name: Clonar repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Rodar agente Python
+      - name: Rodar agente Python (auto-fix)
         run: |
           python3 << 'EOF'
-          print("Agente funcionando 🚀")
+          import os
+
+          print("🔍 Procurando arquivos...")
+
+          for root, dirs, files in os.walk("."):
+              for file in files:
+                  if file.endswith(".html") or file.endswith(".js"):
+                      path = os.path.join(root, file)
+
+                      with open(path, "r", encoding="utf-8") as f:
+                          content = f.read()
+
+                      # exemplo de correção automática
+                      fixed = content.replace("console.log(", "// console.log(")
+
+                      if fixed != content:
+                          print(f"✏️ Corrigido: {path}")
+                          with open(path, "w", encoding="utf-8") as f:
+                              f.write(fixed)
+
+          print("✅ Finalizado")
           EOF
+
+      - name: Commit mudanças
+        run: |
+          git config user.name "code-bot"
+          git config user.email "bot@github.com"
+
+          git add .
+
+          if git diff --cached --quiet; then
+            echo "Nada para commit"
+          else
+            git commit -m "🤖 Auto-fix aplicado"
+            git push
+          fi
