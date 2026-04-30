@@ -1,24 +1,38 @@
-name: AI Code Bot
+name: AI Code Bot 
 
 on:
-  push:
+  pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
-  ai-fix:
-    if: github.actor != 'github-actions[bot]'
+  ai-review:
     runs-on: ubuntu-latest
 
     permissions:
       contents: write
+      pull-requests: write
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Instalar Python deps
-        run: pip install openai
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-      - name: Rodar IA
+      - name: Install OpenAI SDK
+        run: pip install --upgrade openai
+
+      - name: Get changed files
+        id: files
+        run: |
+          git diff --name-only origin/main...HEAD > changed.txt
+          cat changed.txt
+
+      - name: AI Code Review & Fix
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
@@ -30,56 +44,81 @@ jobs:
 
           def fix_code(code):
               prompt = f"""
-              Corrija este código, sem explicação.
-              Retorne apenas o código corrigido:
+              Você é um assistente de código.
+              Corrija apenas erros reais de sintaxe ou lógica simples.
 
+              Regras:
+              - NÃO explique nada
+              - NÃO use markdown
+              - Retorne apenas o código final corrigido
+
+              Código:
               {code}
               """
 
               resp = client.chat.completions.create(
                   model="gpt-4o-mini",
-                  messages=[{"role":"user","content":prompt}],
+                  messages=[{"role": "user", "content": prompt}],
                   temperature=0
               )
 
-              return resp.choices[0].message.content
+              return resp.choices[0].message.content.strip()
 
-          for root, _, files in os.walk("."):
-              for file in files:
-                  if file.endswith(".js") or file.endswith(".html"):
-                      path = os.path.join(root, file)
+          if not os.path.exists("changed.txt"):
+              exit(0)
 
-                      with open(path, "r", encoding="utf-8") as f:
-                          original = f.read()
+          with open("changed.txt") as f:
+              files = [x.strip() for x in f.readlines()]
 
-                      if len(original) < 20:
-                          continue
+          allowed = (".js", ".html", ".ts", ".tsx")
 
-                      print(f"🧠 Analisando {path}")
+          for file in files:
+              if not file.endswith(allowed):
+                  continue
 
-                      try:
-                          fixed = fix_code(original)
+              if not os.path.exists(file):
+                  continue
 
-                          if fixed and fixed != original:
-                              with open(path, "w", encoding="utf-8") as f:
-                                  f.write(fixed)
-                              print(f"✅ Corrigido: {path}")
+              with open(file, "r", encoding="utf-8") as f:
+                  original = f.read()
 
-                      except Exception as e:
-                          print(f"Erro em {path}: {e}")
+              if len(original) < 20:
+                  continue
+
+              print("🧠 analisando:", file)
+
+              try:
+                  fixed = fix_code(original)
+
+                  # proteção anti-lixo da IA
+                  if fixed and "```" not in fixed and fixed != original:
+                      with open(file, "w", encoding="utf-8") as f:
+                          f.write(fixed)
+
+                      print("✅ corrigido:", file)
+
+              except Exception as e:
+                  print("❌ erro:", file, e)
 
           EOF
 
-      - name: Commit
+      - name: Commit changes (if needed)
         run: |
-          git config user.name "ai-bot"
-          git config user.email "bot@github.com"
+          git config user.name "ai-bot-pro"
+          git config user.email "ai-bot@github.com"
 
           git add .
 
           if git diff --cached --quiet; then
-            echo "Nada mudou"
+            echo "Sem mudanças"
           else
-            git commit -m "🤖 AI auto-fix"
-            git push
+            git commit -m "🤖 AI Pro fix"
           fi
+
+      - name: Create Pull Request (auto)
+        uses: peter-evans/create-pull-request@v6
+        with:
+          title: "🤖 AI Code Fix (Pro)"
+          body: "Correções automáticas feitas pela IA"
+          branch: ai-fix-${{ github.run_id }}
+          base: main
