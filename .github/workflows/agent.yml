@@ -6,6 +6,7 @@ on:
 
 jobs:
   run-agent:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
 
     permissions:
@@ -30,7 +31,6 @@ jobs:
                       with open(path, "r", encoding="utf-8") as f:
                           content = f.read()
 
-                      # exemplo de correção automática
                       fixed = content.replace("console.log(", "// console.log(")
 
                       if fixed != content:
