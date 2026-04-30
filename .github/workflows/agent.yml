@@ -1,11 +1,11 @@
-name: Code Bot Agent
+name: AI Code Bot
 
 on:
   push:
     branches: [ "main" ]
 
 jobs:
-  run-agent:
+  ai-fix:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
 
@@ -13,44 +13,73 @@ jobs:
       contents: write
 
     steps:
-      - name: Clonar repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Rodar agente Python (auto-fix)
+      - name: Instalar Python deps
+        run: pip install openai
+
+      - name: Rodar IA
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           python3 << 'EOF'
           import os
+          from openai import OpenAI
 
-          print("🔍 Procurando arquivos...")
+          client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
-          for root, dirs, files in os.walk("."):
+          def fix_code(code):
+              prompt = f"""
+              Corrija este código, sem explicação.
+              Retorne apenas o código corrigido:
+
+              {code}
+              """
+
+              resp = client.chat.completions.create(
+                  model="gpt-4o-mini",
+                  messages=[{"role":"user","content":prompt}],
+                  temperature=0
+              )
+
+              return resp.choices[0].message.content
+
+          for root, _, files in os.walk("."):
               for file in files:
-                  if file.endswith(".html") or file.endswith(".js"):
+                  if file.endswith(".js") or file.endswith(".html"):
                       path = os.path.join(root, file)
 
                       with open(path, "r", encoding="utf-8") as f:
-                          content = f.read()
+                          original = f.read()
 
-                      fixed = content.replace("console.log(", "// console.log(")
+                      if len(original) < 20:
+                          continue
 
-                      if fixed != content:
-                          print(f"✏️ Corrigido: {path}")
-                          with open(path, "w", encoding="utf-8") as f:
-                              f.write(fixed)
+                      print(f"🧠 Analisando {path}")
 
-          print("✅ Finalizado")
+                      try:
+                          fixed = fix_code(original)
+
+                          if fixed and fixed != original:
+                              with open(path, "w", encoding="utf-8") as f:
+                                  f.write(fixed)
+                              print(f"✅ Corrigido: {path}")
+
+                      except Exception as e:
+                          print(f"Erro em {path}: {e}")
+
           EOF
 
-      - name: Commit mudanças
+      - name: Commit
         run: |
-          git config user.name "code-bot"
+          git config user.name "ai-bot"
           git config user.email "bot@github.com"
 
           git add .
 
           if git diff --cached --quiet; then
-            echo "Nada para commit"
+            echo "Nada mudou"
           else
-            git commit -m "🤖 Auto-fix aplicado"
+            git commit -m "🤖 AI auto-fix"
             git push
           fi
