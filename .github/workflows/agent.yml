@@ -1,1 +1,19 @@
+name: Code Bot Agent
 
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clonar repo
+        uses: actions/checkout@v3
+
+      - name: Rodar agente Python
+        run: |
+          python3 << 'EOF'
+          print("Agente funcionando 🚀")
+          EOF
